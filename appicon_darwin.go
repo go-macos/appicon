@@ -96,17 +96,27 @@ func forPID(pid int32, size int) (out Pixels, err error) {
 // the application shipped, which for a modern .icns is a 1024 the caller then
 // scales down badly. Asking AppKit to draw it at the size wanted is what picks
 // the right member of the family.
-func rasterise(icon objc.ID, size int) (Pixels, error) {
+// rasterise draws an NSImage square at size pixels a side.
+func rasterise(icon objc.ID, size int) (Pixels, error) { return rasteriseAt(icon, size, size) }
+
+// rasteriseAt draws an NSImage into a w by h bitmap.
+//
+// Two sides rather than one because not every image is square: an application's
+// icon is, and a system symbol is not -- visionpro is 21 by 13 points -- and
+// drawing a wide glyph into a square box stretches it by however much the two
+// differ. Measured: 62% taller than it should be, which is enough for the person
+// looking at it to say that is not the icon that was there before.
+func rasteriseAt(icon objc.ID, w, h int) (Pixels, error) {
 	rep := objc.ClassID("NSBitmapImageRep").Send(objc.Sel("alloc")).Send(
 		objc.Sel("initWithBitmapDataPlanes:pixelsWide:pixelsHigh:bitsPerSample:samplesPerPixel:hasAlpha:isPlanar:colorSpaceName:bitmapFormat:bytesPerRow:bitsPerPixel:"),
 		uintptr(0), // let it allocate: a plane this side would have to outlive the call
-		size, size,
+		w, h,
 		bitsPerSample, samples,
 		true,  // hasAlpha
 		false, // isPlanar
 		objc.NSString(nsDeviceRGBColorSpace),
 		uintptr(premultipliedBitmapFormat),
-		size*4, bitsPerPixel,
+		w*4, bitsPerPixel,
 	)
 	if rep == 0 {
 		return Pixels{}, ErrNoIcon
@@ -127,10 +137,10 @@ func rasterise(icon objc.ID, size int) (Pixels, error) {
 	gc.Send(objc.Sel("setCurrentContext:"), ctx)
 
 	icon.Send(objc.Sel("drawInRect:fromRect:operation:fraction:"),
-		rect{0, 0, float64(size), float64(size)}, // where
-		rect{0, 0, 0, 0},                         // all of it
-		uintptr(2),                               // NSCompositingOperationSourceOver
-		1.0,                                      // fully opaque
+		rect{0, 0, float64(w), float64(h)}, // where
+		rect{0, 0, 0, 0},                   // all of it
+		uintptr(2),                         // NSCompositingOperationSourceOver
+		1.0,                                // fully opaque
 	)
 	ctx.Send(objc.Sel("flushGraphics"))
 
@@ -141,13 +151,13 @@ func rasterise(icon objc.ID, size int) (Pixels, error) {
 	if data == nil {
 		return Pixels{}, ErrNoIcon
 	}
-	n := size * size * 4
+	n := w * h * 4
 	// COPIED, not referenced: the rep is released when this returns and the
 	// bytes go with it. A slice pointing into freed AppKit memory is the kind
 	// of bug that shows up as somebody else's crash.
 	pix := make([]byte, n)
 	unpremultiply(pix, unsafe.Slice((*byte)(data), n))
-	return Pixels{Pix: pix, W: size, H: size}, nil
+	return Pixels{Pix: pix, W: w, H: h}, nil
 }
 
 // rect is CGRect, which is what drawInRect: takes by value.
@@ -201,7 +211,30 @@ func symbol(name string, size int) (out Pixels, err error) {
 			err = fmt.Errorf("%w: %q", ErrNoSymbol, name)
 			return
 		}
-		out, err = rasterise(img, size)
+		// AT ITS OWN SHAPE. A system symbol is not square -- visionpro is 21 by
+		// 13 points, eyeglasses 23 by 10 -- and a menu bar scales what it is
+		// given by HEIGHT. Drawn into a square box the glyph comes out 62%
+		// taller than it should be, which is what "that is not the icon that
+		// was there before" looks like.
+		//
+		// size is the LONGER side, so a caller asking for 44 gets a picture no
+		// bigger than that in either direction.
+		w, h := size, size
+		if s := objc.Send[cgSize](img, objc.Sel("size")); s.W > 0 && s.H > 0 {
+			if s.W >= s.H {
+				h = int(float64(size)*s.H/s.W + 0.5)
+			} else {
+				w = int(float64(size)*s.W/s.H + 0.5)
+			}
+		}
+		if w < 1 || h < 1 {
+			err = fmt.Errorf("%w: %q is %dx%d at that size", ErrNoSymbol, name, w, h)
+			return
+		}
+		out, err = rasteriseAt(img, w, h)
 	})
 	return out, err
 }
+
+// cgSize is NSSize, which is what -[NSImage size] hands back by value.
+type cgSize struct{ W, H float64 }
