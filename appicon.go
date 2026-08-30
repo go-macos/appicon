@@ -83,7 +83,8 @@ func ForPID(pid int32, size int) (Pixels, error) {
 // one.
 var ErrNoSymbol = errors.New("appicon: no such system symbol")
 
-// Symbol renders one of the system's own symbols, square at size pixels a side.
+// Symbol renders one of the system's own symbols, at its own shape, no bigger
+// than size pixels on its longer side.
 //
 // It is here rather than in a package of its own because the hard half is
 // already here: turning an NSImage into straight RGBA without cgo. An SF Symbol

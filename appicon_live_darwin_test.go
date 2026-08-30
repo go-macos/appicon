@@ -101,10 +101,20 @@ func TestLiveRendersASystemSymbol(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Symbol: %v", err)
 	}
-	if px44.W != px || px44.H != px {
-		t.Errorf("Symbol gave %dx%d, want %dx%d", px44.W, px44.H, px, px)
+	// ITS OWN SHAPE, not a square. A menu bar scales what it is given by
+	// height, so a wide glyph squeezed into a square comes out taller than the
+	// system draws it -- visionpro is 21 by 13 points, and stretching it was
+	// noticed by the person looking at their menu bar.
+	if px44.W != px && px44.H != px {
+		t.Errorf("Symbol gave %dx%d; one side should be the %d asked for", px44.W, px44.H, px)
 	}
-	inked := 0
+	if px44.W > px || px44.H > px {
+		t.Errorf("Symbol gave %dx%d, bigger than the %d asked for", px44.W, px44.H, px)
+	}
+	if px44.W == px44.H {
+		t.Logf("display came back square (%dx%d); that is this symbol's own shape", px44.W, px44.H)
+	}
+	inked, box := 0, px44.W*px44.H
 	for i := 3; i < len(px44.Pix); i += 4 {
 		if px44.Pix[i] > 0 {
 			inked++
@@ -113,7 +123,17 @@ func TestLiveRendersASystemSymbol(t *testing.T) {
 	if inked == 0 {
 		t.Fatal("the symbol came back blank")
 	}
-	t.Logf("display: %d of %d pixels carry ink (%d%%)", inked, px*px, 100*inked/(px*px))
+	t.Logf("display: %dx%d, %d of %d pixels carry ink (%d%%)",
+		px44.W, px44.H, inked, box, 100*inked/box)
+
+	// And a symbol that is decidedly not square keeps that.
+	if wide, err := Symbol("eyeglasses", px); err == nil {
+		t.Logf("eyeglasses: %dx%d", wide.W, wide.H)
+		if wide.W == wide.H {
+			t.Errorf("eyeglasses came back square at %dx%d; it is 23 by 10 points",
+				wide.W, wide.H)
+		}
+	}
 
 	// A name the system does not have is refused rather than drawn as nothing:
 	// a menu bar with a hole in it is worse than one with nothing in it.
