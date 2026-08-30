@@ -9,3 +9,6 @@ package appicon
 // forPID answers that it cannot, rather than being absent: a consumer that
 // cross-compiles gets the same API and one clean error from it.
 func forPID(int32, int) (Pixels, error) { return Pixels{}, ErrUnsupported }
+
+// symbol reports [ErrUnsupported]: system symbols are macOS's.
+func symbol(string, int) (Pixels, error) { return Pixels{}, ErrUnsupported }

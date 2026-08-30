@@ -7,6 +7,7 @@
 package appicon
 
 import (
+	"errors"
 	"os"
 	"testing"
 
@@ -82,4 +83,41 @@ func frontmostPID(t *testing.T) int32 {
 		t.Skip("nothing is frontmost: this session has no window server")
 	}
 	return pid
+}
+
+// TestLiveRendersASystemSymbol asks the window server for one of its own
+// symbols, so it runs only under APPICON_LIVE.
+//
+// It is the measurement the desk's menu bar needed: a glyph drawn as an
+// outline by a cross-platform toolkit puts far less ink in a 22-point bar than
+// the one the system draws for that bar, and "far less" is a number here
+// rather than an opinion.
+func TestLiveRendersASystemSymbol(t *testing.T) {
+	if os.Getenv("APPICON_LIVE") == "" {
+		t.Skip("set APPICON_LIVE=1 to run the test that talks to the window server")
+	}
+	const px = 44
+	px44, err := Symbol("display", px)
+	if err != nil {
+		t.Fatalf("Symbol: %v", err)
+	}
+	if px44.W != px || px44.H != px {
+		t.Errorf("Symbol gave %dx%d, want %dx%d", px44.W, px44.H, px, px)
+	}
+	inked := 0
+	for i := 3; i < len(px44.Pix); i += 4 {
+		if px44.Pix[i] > 0 {
+			inked++
+		}
+	}
+	if inked == 0 {
+		t.Fatal("the symbol came back blank")
+	}
+	t.Logf("display: %d of %d pixels carry ink (%d%%)", inked, px*px, 100*inked/(px*px))
+
+	// A name the system does not have is refused rather than drawn as nothing:
+	// a menu bar with a hole in it is worse than one with nothing in it.
+	if _, err := Symbol("no.such.symbol.anywhere.at.all", px); !errors.Is(err, ErrNoSymbol) {
+		t.Errorf("Symbol of a made-up name = %v, want ErrNoSymbol", err)
+	}
 }
