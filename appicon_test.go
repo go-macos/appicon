@@ -40,3 +40,37 @@ func TestPixelsIsPlainRGBA(t *testing.T) {
 		t.Errorf("%d bytes for %dx%d, want %d", got, p.W, p.H, want)
 	}
 }
+
+func TestSymbolRefusesWhatIsNotAName(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		px   int
+		why  string
+	}{
+		{"", 44, "no name at all"},
+		{"   ", 44, "a name of spaces"},
+	} {
+		if _, err := Symbol(c.name, c.px); !errors.Is(err, ErrNoSymbol) {
+			t.Errorf("%s: Symbol = %v, want ErrNoSymbol", c.why, err)
+		}
+	}
+	for _, px := range []int{MinSize - 1, MaxSize + 1} {
+		if _, err := Symbol("display", px); !errors.Is(err, ErrSize) {
+			t.Errorf("Symbol at %d pixels = %v, want ErrSize", px, err)
+		}
+	}
+}
+
+func TestSymbolReachesThePlatform(t *testing.T) {
+	// The last statement of Symbol is the platform call. Off macOS it reports
+	// that there are no system symbols; on macOS a name nothing has is refused
+	// by the platform rather than by the argument checks above -- either way
+	// the call is made, which is what this pins.
+	_, err := Symbol("no.such.symbol.anywhere.at.all", 44)
+	if err == nil {
+		t.Fatal("a symbol nothing has was rendered")
+	}
+	if !errors.Is(err, ErrNoSymbol) && !errors.Is(err, ErrUnsupported) {
+		t.Errorf("Symbol = %v, want ErrNoSymbol or ErrUnsupported", err)
+	}
+}

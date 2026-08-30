@@ -7,6 +7,7 @@
 package appicon
 
 import (
+	"fmt"
 	"sync"
 	"unsafe"
 
@@ -180,4 +181,27 @@ func unpremultiply(dst, src []byte) {
 			}
 		}
 	}
+}
+
+// symbol renders a system symbol by drawing the NSImage the system hands back.
+//
+// No symbol configuration is asked for: drawInRect: scales the glyph to the
+// box, which is what a caller asking for a size means, and a point size and a
+// weight would be two more numbers to get wrong for no gain.
+func symbol(name string, size int) (out Pixels, err error) {
+	loadOnce.Do(func() { loadErr = objc.Load(objc.AppKit, objc.Foundation) })
+	if loadErr != nil {
+		return Pixels{}, loadErr
+	}
+	objc.AutoreleasePool(func() {
+		img := objc.ClassID("NSImage").Send(
+			objc.Sel("imageWithSystemSymbolName:accessibilityDescription:"),
+			objc.NSString(name), objc.NSString(name))
+		if img == 0 {
+			err = fmt.Errorf("%w: %q", ErrNoSymbol, name)
+			return
+		}
+		out, err = rasterise(img, size)
+	})
+	return out, err
 }

@@ -24,7 +24,11 @@
 // information about a running process, unlike its windows.
 package appicon
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+	"strings"
+)
 
 // Errors this package returns.
 var (
@@ -73,4 +77,33 @@ func ForPID(pid int32, size int) (Pixels, error) {
 		return Pixels{}, ErrSize
 	}
 	return forPID(pid, size)
+}
+
+// ErrNoSymbol means this system has no symbol of that name, or the name is not
+// one.
+var ErrNoSymbol = errors.New("appicon: no such system symbol")
+
+// Symbol renders one of the system's own symbols, square at size pixels a side.
+//
+// It is here rather than in a package of its own because the hard half is
+// already here: turning an NSImage into straight RGBA without cgo. An SF Symbol
+// IS an NSImage; only the way of asking for one differs.
+//
+// It exists because a menu-bar icon has to be legible at about 22 points, and a
+// glyph drawn as an outline by a cross-platform toolkit is not the same thing
+// as one the system draws for its own bar. MEASURED, in the item's own strip of
+// a real menu bar: an emoji title puts 79 pixels of ink there, a toolkit's
+// glasses outline 140 at twice the size, and the system's own "visionpro" 182.
+//
+// The name is an SF Symbol's, such as "eyeglasses" or "display". A name the
+// system does not have reports [ErrNoSymbol] rather than a blank picture,
+// because a menu bar with a hole in it is worse than one with nothing in it.
+func Symbol(name string, size int) (Pixels, error) {
+	if strings.TrimSpace(name) == "" {
+		return Pixels{}, fmt.Errorf("%w: no name given", ErrNoSymbol)
+	}
+	if size < MinSize || size > MaxSize {
+		return Pixels{}, ErrSize
+	}
+	return symbol(name, size)
 }
